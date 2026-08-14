@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tidy Mail</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/public/style.css">
+</head>
+<body>
+  <div id="app" class="state-upload">
+
+    <!-- ========== TOP BAR ========== -->
+    <header class="topbar">
+      <div class="wordmark">
+        <span class="wordmark-tidy">Tidy</span><span class="wordmark-mail">Mail</span>
+      </div>
+      <span class="topbar-tag">By Rehan</span>
+    </header>
+
+    <!-- ========== UPLOAD STATE ========== -->
+    <section class="view view-upload" id="viewUpload">
+      <div class="upload-container">
+        <div class="upload-zone" id="uploadZone" tabindex="0" role="button" aria-label="Upload a CSV or Excel file">
+          <div class="upload-zone-inner">
+            <svg class="upload-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="6" y="10" width="36" height="28" rx="3" stroke="currentColor" stroke-width="2"/>
+              <path d="M6 18L24 28L42 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M24 6V16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M20 10L24 6L28 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <h2 class="upload-title">Drop your CSV here</h2>
+            <p class="upload-subtitle">or click to select a file</p>
+            <p class="upload-filetypes">CSV, XLS, XLSX</p>
+          </div>
+          <input type="file" id="fileInput" accept=".csv,.xls,.xlsx" hidden>
+        </div>
+        <div class="upload-file-preview" id="filePreview">
+          <div class="file-preview-info">
+            <span class="file-preview-name" id="filePreviewName"></span>
+            <span class="file-preview-size" id="filePreviewSize"></span>
+          </div>
+          <button class="file-preview-clear" id="filePreviewClear" aria-label="Remove file">&times;</button>
+        </div>
+        <button class="button2 upload-submit" id="uploadSubmit" disabled>
+          <span class="button2-text">Process File</span>
+        </button>
+        <div class="upload-pills">
+          <span class="pill">Cleans</span>
+          <span class="pill">Fixes</span>
+          <span class="pill">Verifies</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== PROCESSING STATE ========== -->
+    <section class="view view-processing" id="viewProcessing">
+      <div class="processing-container">
+        <div class="processing-header">
+          <div class="processing-number-block">
+            <span class="processing-count" id="processCount">0</span>
+            <span class="processing-total" id="processTotal">of 0</span>
+          </div>
+          <p class="processing-step" id="processStep">Starting...</p>
+        </div>
+
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progressFill"></div>
+        </div>
+
+        <div class="pipeline-dots" id="pipelineDots">
+          <div class="pipeline-dot" data-stage="parsing" title="Parsing">
+            <span class="pipeline-dot-label">Parse</span>
+          </div>
+          <div class="pipeline-dot" data-stage="cleaning" title="Cleaning">
+            <span class="pipeline-dot-label">Clean</span>
+          </div>
+          <div class="pipeline-dot" data-stage="fixing" title="TLD Fixing">
+            <span class="pipeline-dot-label">Fix</span>
+          </div>
+          <div class="pipeline-dot" data-stage="validating" title="Validating">
+            <span class="pipeline-dot-label">Validate</span>
+          </div>
+          <div class="pipeline-dot" data-stage="dns" title="DNS Check">
+            <span class="pipeline-dot-label">DNS</span>
+          </div>
+          <div class="pipeline-dot" data-stage="mx" title="MX Check">
+            <span class="pipeline-dot-label">MX</span>
+          </div>
+          <div class="pipeline-dot" data-stage="categorizing" title="Categorizing">
+            <span class="pipeline-dot-label">Sort</span>
+          </div>
+          <div class="pipeline-dot" data-stage="complete" title="Complete">
+            <span class="pipeline-dot-label">Done</span>
+          </div>
+        </div>
+
+        <div class="live-stats" id="liveStats">
+          <div class="live-stat-card">
+            <span class="live-stat-value" id="liveGoogle">0</span>
+            <span class="live-stat-label">Google</span>
+          </div>
+          <div class="live-stat-card">
+            <span class="live-stat-value" id="liveNonGoogle">0</span>
+            <span class="live-stat-label">Non-Google</span>
+          </div>
+          <div class="live-stat-card">
+            <span class="live-stat-value" id="liveRemoved">0</span>
+            <span class="live-stat-label">Removed</span>
+          </div>
+          <div class="live-stat-card">
+            <span class="live-stat-value" id="liveReview">0</span>
+            <span class="live-stat-label">Review</span>
+          </div>
+        </div>
+
+        <!-- Pencil loader (rotating pencil drawing a circular stroke) -->
+        <div class="pencil-loader-wrap" id="pencilLoader">
+          <svg xmlns="http://www.w3.org/2000/svg" height="120px" width="120px" viewBox="0 0 200 200" class="pencil">
+            <defs>
+              <clipPath id="pencil-eraser">
+                <rect height="30" width="30" ry="5" rx="5"></rect>
+              </clipPath>
+            </defs>
+            <circle transform="rotate(-113,100,100)" stroke-linecap="round" stroke-dashoffset="439.82" stroke-dasharray="439.82 439.82" stroke-width="2" stroke="currentColor" fill="none" r="70" class="pencil__stroke"></circle>
+            <g transform="translate(100,100)" class="pencil__rotate">
+              <g fill="none">
+                <circle transform="rotate(-90)" stroke-dashoffset="402" stroke-dasharray="402.12 402.12" stroke-width="30" stroke="hsl(168,100%,42%)" r="64" class="pencil__body1"></circle>
+                <circle transform="rotate(-90)" stroke-dashoffset="465" stroke-dasharray="464.96 464.96" stroke-width="10" stroke="hsl(168,100%,52%)" r="74" class="pencil__body2"></circle>
+                <circle transform="rotate(-90)" stroke-dashoffset="339" stroke-dasharray="339.29 339.29" stroke-width="10" stroke="hsl(168,100%,32%)" r="54" class="pencil__body3"></circle>
+              </g>
+              <g transform="rotate(-90) translate(49,0)" class="pencil__eraser">
+                <g class="pencil__eraser-skew">
+                  <rect height="30" width="30" ry="5" rx="5" fill="hsl(15,80%,65%)"></rect>
+                  <rect clip-path="url(#pencil-eraser)" height="30" width="5" fill="hsl(15,80%,55%)"></rect>
+                  <rect height="20" width="30" fill="hsl(220,10%,90%)"></rect>
+                  <rect height="20" width="15" fill="hsl(220,10%,70%)"></rect>
+                  <rect height="20" width="5" fill="hsl(220,10%,80%)"></rect>
+                  <rect height="2" width="30" y="6" fill="hsla(220,10%,10%,0.2)"></rect>
+                  <rect height="2" width="30" y="13" fill="hsla(220,10%,10%,0.2)"></rect>
+                </g>
+              </g>
+              <g transform="rotate(-90) translate(49,-30)" class="pencil__point">
+                <polygon points="15 0,30 30,0 30" fill="hsl(35,90%,70%)"></polygon>
+                <polygon points="15 0,6 30,0 30" fill="hsl(35,90%,50%)"></polygon>
+                <polygon points="15 0,20 10,10 10" fill="hsl(220,10%,10%)"></polygon>
+              </g>
+            </g>
+          </svg>
+          <p class="pencil-label">Verifying domains...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== COMPLETE STATE ========== -->
+    <section class="view view-complete" id="viewComplete">
+      <div class="complete-container">
+        <h1 class="complete-title">Done.</h1>
+        <p class="complete-meta" id="completeMeta"></p>
+
+        <div class="stat-grid" id="statGrid">
+          <div class="stat-card stat-card-google">
+            <span class="stat-card-number" data-stat="googleWorkspace">0</span>
+            <span class="stat-card-label">Google Workspace</span>
+          </div>
+          <div class="stat-card stat-card-nongoogle">
+            <span class="stat-card-number" data-stat="nonGoogle">0</span>
+            <span class="stat-card-label">Non-Google</span>
+          </div>
+          <div class="stat-card stat-card-removed">
+            <span class="stat-card-number" data-stat="removed">0</span>
+            <span class="stat-card-label">Removed</span>
+          </div>
+          <div class="stat-card stat-card-disposable">
+            <span class="stat-card-number" data-stat="disposable">0</span>
+            <span class="stat-card-label">Disposable</span>
+          </div>
+          <div class="stat-card stat-card-fixed">
+            <span class="stat-card-number" data-stat="fixed">0</span>
+            <span class="stat-card-label">Fixed</span>
+          </div>
+          <div class="stat-card stat-card-trade">
+            <span class="stat-card-number" data-stat="tradeBased">0</span>
+            <span class="stat-card-label">Trade-Based</span>
+          </div>
+          <div class="stat-card stat-card-role">
+            <span class="stat-card-number" data-stat="roleBased">0</span>
+            <span class="stat-card-label">Role-Based</span>
+          </div>
+          <div class="stat-card stat-card-review">
+            <span class="stat-card-number" data-stat="needsReview">0</span>
+            <span class="stat-card-label">Needs Review</span>
+          </div>
+        </div>
+
+        <button class="button2 download-btn" id="downloadBtn">
+          <span class="button2-text">Download Results</span>
+        </button>
+
+        <button class="reset-btn" id="resetBtn">Process another file</button>
+      </div>
+    </section>
+
+    <!-- ========== ERROR STATE ========== -->
+    <section class="view view-error" id="viewError">
+      <div class="error-container">
+        <div class="error-icon-wrap">
+          <svg class="error-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+            <path d="M15 9L9 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M9 9L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <h2 class="error-title">Something went wrong</h2>
+        <p class="error-message" id="errorMessage"></p>
+        <button class="button2 error-retry" id="retryBtn">
+          <span class="button2-text">Try Again</span>
+        </button>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="/public/app.js"></script>
+</body>
+</html>

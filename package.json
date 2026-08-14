@@ -1,0 +1,13 @@
+{
+  "name": "tidy-mail",
+  "version": "1.0.0",
+  "description": "Email cleaning, fixing, and verification tool",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  }
+}

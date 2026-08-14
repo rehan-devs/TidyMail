@@ -1,0 +1,23 @@
+{
+  "jobId": "5d99d462-038f-4bfc-9ebc-4feb44bb4cd3",
+  "status": "mx",
+  "currentStep": "Checking 540 of 11854: bluehorizonco.com",
+  "progress": 540,
+  "total": 11854,
+  "fileName": "test.xlsx",
+  "startedAt": "2026-08-14T01:07:28.623Z",
+  "stats": {
+    "googleWorkspace": 246,
+    "nonGoogle": 2030,
+    "catchAll": 0,
+    "removed": 234,
+    "disposable": 0,
+    "fixed": 0,
+    "needsReview": 0,
+    "roleBased": 0,
+    "tradeBased": 0
+  },
+  "error": null,
+  "completedAt": null,
+  "durationMs": null
+}

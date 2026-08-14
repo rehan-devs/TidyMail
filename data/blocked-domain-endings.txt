@@ -1,0 +1,312 @@
+# Test and example domains
+example.com
+example.org
+example.net
+test.com
+test.org
+test.net
+localhost
+localhost.com
+
+# Mailinator family
+mailinator.com
+mailinator.net
+mailinator.org
+
+# Guerrilla Mail family
+guerrillamail.com
+guerrillamail.info
+guerrillamail.biz
+guerrillamail.de
+guerrillamail.net
+guerrillamail.org
+guerrillamailblock.com
+grr.la
+spam4.me
+
+# Trash Mail family
+trashmail.com
+trashmail.me
+trashmail.net
+trashmail.io
+trashmail.at
+trashmail.xyz
+
+# Yopmail family
+yopmail.com
+yopmail.fr
+cool.fr.nf
+jetable.fr.nf
+nospam.ze.tc
+nomail.xl.cx
+mega.zik.dj
+speed.1s.fr
+courriel.fr.nf
+moncourrier.fr.nf
+monemail.fr.nf
+monmail.fr.nf
+
+# Temp Mail family
+tempmail.com
+tempmail.net
+tempmail.org
+tempmail.us
+temp-mail.org
+temp-mail.com
+temp-mail.ru
+tempemail.com
+tempemail.net
+tempr.email
+tempinbox.com
+tempinbox.co.uk
+
+# Fake inbox
+fakeinbox.com
+fakeinbox.net
+fakeinbox.org
+fakemailgenerator.com
+fakemailgenerator.net
+
+# Spam services
+spamgourmet.com
+spamgourmet.net
+spamgourmet.org
+spamevader.net
+spamfree24.org
+spamfree24.de
+spamfree24.info
+spamfree24.biz
+spamfree24.net
+spamfree24.eu
+spam.la
+antispam24.de
+bspamfree.org
+spamgob.com
+spamtrail.com
+
+# Discard services
+discard.email
+discardmail.com
+discardmail.de
+dispostable.com
+
+# Free mail junk
+freemail.ms
+filzmail.com
+mailnull.com
+put2.net
+q2labz.com
+mohmal.com
+mailexpire.com
+harakirimail.com
+
+# French temp mail
+mail-temporaire.fr
+tempomail.fr
+mail-temporaire.com
+jetable.net
+jetable.org
+jetable.fr
+
+# Sharklasers / Guerrilla variants
+sharklasers.com
+guerrillamail.com
+spam4.me
+grr.la
+
+# Throwaway
+throwam.com
+throwam.net
+throwamail.com
+
+# 10 Minute Mail variants
+10minutemail.com
+10minutemail.net
+10minutemail.org
+10minutemail.co.uk
+10minutemail.de
+10minutemail.us
+10minutemail.info
+10minemail.com
+tenminutemail.com
+minutemail.com
+
+# Mailnesia family
+mailnesia.com
+mailnull.com
+mailscrap.com
+mailsiphon.com
+mailslite.com
+mailzilla.com
+mailzilla.org
+mailzilla.com
+
+# Wegwerfmail
+wegwerfmail.de
+wegwerfmail.net
+wegwerfmail.org
+
+# Spamex
+spamex.com
+spaml.com
+spaml.de
+spam.org.tr
+
+# Inbox alias services
+inboxalias.com
+inboxbear.com
+inboxclean.com
+inboxdesign.com
+inboxninja.com
+
+# Getairmail
+getairmail.com
+getairmail.net
+
+# Mailmo
+mailmo.com
+
+# Throwbin
+throwbin.io
+throwbin.com
+
+# Mailsac
+mailsac.com
+
+# Maildrop
+maildrop.cc
+
+# GuerrilaMail variants (spelled differently)
+gurillamail.com
+guerillamail.com
+gorillasmail.com
+
+# Specific blocked domains from project list
+wixpress.com
+wispress.com
+sentry.io
+test957.com
+mailnator.com
+
+# Known problematic specific domains
+rediffmail.com
+juno.com
+netzero.net
+netzero.com
+
+# QQ and Chinese spam sources
+qq.com
+126.com
+163.com
+188.com
+
+# Comcast and cable providers (high spam)
+comcast.net
+sbcglobal.net
+bellsouth.net
+att.net
+cox.net
+charter.net
+earthlink.net
+verizon.net
+roadrunner.com
+windstream.net
+embarqmail.com
+centurylink.net
+frontier.com
+zoominternet.net
+suddenlink.net
+optonline.net
+
+# Eyeo / filter list sources
+discard.email
+spambog.com
+spambog.de
+spambog.ru
+
+# Guerrilla variants cont.
+getonemail.com
+getonemail.net
+
+# Temp-inbox services
+inbox.si
+inboxbear.com
+
+# Crazymailing
+crazymailing.com
+
+# Klzlk
+klzlk.com
+
+# Spam4
+spam4.me
+spam.su
+
+# Mailin8r
+mailin8r.com
+mailinator2.com
+mailinator3.com
+
+# Safe-mail (legitimate but often abused)
+safetymail.info
+
+# AirMail throwaway
+airmail.net
+
+# Hmamail
+hmamail.com
+
+# Kasmail
+kasmail.com
+
+# Pookmail
+pookmail.com
+
+# Incognitomail
+incognitomail.com
+incognitomail.net
+incognitomail.org
+
+# Spam Cannon
+spamcannon.com
+spamcannon.net
+
+# GishPuppy
+gishpuppy.com
+
+# Owlpic
+owlpic.com
+
+# Nwldx
+nwldx.com
+
+# Additional from filter list
+yopmail.pp.ua
+yopmail.net
+yop.email
+
+# Lycos
+lycos.com
+
+# Further throwaway domains
+throwam.com
+tempr.email
+emailondeck.com
+mailnew.com
+emailtemporal.org
+emailtemporar.ro
+tmpmail.net
+tmpmail.org
+tmpmail.com
+
+# Fake domains from project-specific list
+@live.com
+suddenlink.com
+lemcoinc.com
+omniretailenterprises.com
+consigli.com
+acglp.com
+reedoil.com
+macd.org
+horizonview.net
+alumla.com
