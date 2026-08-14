@@ -1,0 +1,23 @@
+{
+  "jobId": "df9d9cbd-243a-4200-acd5-bc41dab36fd5",
+  "status": "mx",
+  "currentStep": "Checking 1575 of 3981: designworkplace.com",
+  "progress": 1575,
+  "total": 3981,
+  "fileName": "test.xlsx",
+  "startedAt": "2026-08-14T02:40:36.230Z",
+  "stats": {
+    "googleWorkspace": 6410,
+    "nonGoogle": 2698,
+    "catchAll": 0,
+    "removed": 7395,
+    "disposable": 0,
+    "fixed": 16,
+    "needsReview": 0,
+    "roleBased": 0,
+    "tradeBased": 0
+  },
+  "error": null,
+  "completedAt": null,
+  "durationMs": null
+}
