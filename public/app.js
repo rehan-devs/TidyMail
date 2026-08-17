@@ -151,12 +151,11 @@
   }
 
   // ============================================================
-  // ENVELOPES — hide hint permanently after first hover
+  // ENVELOPES
   // ============================================================
   function initEnvelopes() {
     if (!els.envelopeRow) return;
 
-    // Check if user has already peeked before
     try {
       if (localStorage.getItem(ENVELOPE_PEEKED_KEY) === '1') {
         els.envelopeRow.classList.add('peeked');
@@ -164,17 +163,17 @@
       }
     } catch (_) {}
 
+    const envelopes = els.envelopeRow.querySelectorAll('.envelope');
+
     const markPeeked = () => {
       els.envelopeRow.classList.add('peeked');
       try { localStorage.setItem(ENVELOPE_PEEKED_KEY, '1'); } catch (_) {}
-      // remove listeners once triggered
       envelopes.forEach(env => {
         env.removeEventListener('mouseenter', markPeeked);
         env.removeEventListener('focus', markPeeked);
       });
     };
 
-    const envelopes = els.envelopeRow.querySelectorAll('.envelope');
     envelopes.forEach(env => {
       env.addEventListener('mouseenter', markPeeked, { once: false });
       env.addEventListener('focus', markPeeked, { once: false });
@@ -182,35 +181,48 @@
   }
 
   // ============================================================
-  // NUMBER ANIMATION
+  // NUMBER ANIMATION — with CORRECT cancellation
   // ============================================================
   function easeOutExpo(t) { return t === 1 ? 1 : 1 - Math.pow(2, -10 * t); }
 
+  /**
+   * Animate a number on an element from `from` to `to`.
+   * Each animation gets a token stored in `animationsArray`.
+   * The tick loop checks token.cancelled every frame and bails out if true.
+   * This is bulletproof — no more stale rafId race conditions.
+   */
   function animateNumber(el, from, to, duration = 800, animationsArray = null) {
     if (from === to) { el.textContent = fmt(to); return null; }
+
+    // Each animation has its own token
+    const token = { cancelled: false, el: el };
+    if (animationsArray) animationsArray.push(token);
+
     const start = performance.now();
     const diff = to - from;
-    let rafId;
+
     function tick(now) {
+      if (token.cancelled) return; // ← honored EVERY frame
       const p = Math.min((now - start) / duration, 1);
       el.textContent = fmt(Math.round(from + diff * easeOutExpo(p)));
       if (p < 1) {
-        rafId = requestAnimationFrame(tick);
-        if (animationsArray) {
-          const idx = animationsArray.indexOf(rafId - 1);
-          if (idx !== -1) animationsArray[idx] = rafId;
-        }
+        requestAnimationFrame(tick);
+      } else {
+        // Animation done — mark cancelled so it can be cleaned up
+        token.cancelled = true;
       }
     }
-    rafId = requestAnimationFrame(tick);
-    if (animationsArray) animationsArray.push(rafId);
-    return rafId;
+
+    requestAnimationFrame(tick);
+    return token;
   }
 
   function cancelAllAnimations(animationsArray) {
     if (!animationsArray) return;
-    for (const id of animationsArray) {
-      try { cancelAnimationFrame(id); } catch (_) {}
+    for (const token of animationsArray) {
+      if (token && typeof token === 'object') {
+        token.cancelled = true;
+      }
     }
     animationsArray.length = 0;
   }
@@ -387,7 +399,8 @@
         return;
       }
       const status = await res.json();
-      updateProcessingUI(status);
+
+      // If we're already showing complete, don't process any more updates
       if (status.status === 'complete') {
         stopPolling();
         if (!hasSavedCurrentJob) {
@@ -395,7 +408,12 @@
           hasSavedCurrentJob = true;
         }
         showComplete(status);
-      } else if (status.status === 'error') {
+        return; // ← don't call updateProcessingUI after complete
+      }
+
+      updateProcessingUI(status);
+
+      if (status.status === 'error') {
         stopPolling();
         showError(status.error || 'Processing failed.');
       }
@@ -472,23 +490,28 @@
   }
 
   function showComplete(status) {
+    // KILL every in-flight animation immediately
     cancelAllAnimations(inFlightAnimations);
 
     const dur = fmtDuration(status.durationMs);
     els.completeMeta.textContent = `Processed ${status.fileName || 'your file'}${dur ? ' in ' + dur : ''}`;
     const stats = status.stats || {};
 
+    // Switch view FIRST, then start fresh animations from 0
+    setWorkspaceState('complete');
+
+    // Reset all result numbers to 0 immediately
     $$('#wsComplete .result-card-number').forEach(el => { el.textContent = '0'; });
 
+    // Small delay for view transition, then animate up
     setTimeout(() => {
       $$('#wsComplete .result-card-number').forEach(el => {
         const key = el.dataset.stat;
         const val = stats[key] || 0;
+        // Use a fresh, separate animations array so nothing can cancel these
         animateNumber(el, 0, val, 1200);
       });
     }, 100);
-
-    setWorkspaceState('complete');
   }
 
   els.downloadBtn.addEventListener('click', () => {
@@ -513,6 +536,7 @@
   function showError(msg) {
     els.errorMessage.textContent = msg || 'Unexpected error occurred.';
     stopPolling();
+    cancelAllAnimations(inFlightAnimations);
     setWorkspaceState('error');
     setView('workspace');
   }
@@ -618,7 +642,8 @@
         return;
       }
       const status = await res.json();
-      updateSepProcessingUI(status);
+
+      // If complete, jump straight to complete UI — don't run one more updateProcessingUI
       if (status.status === 'complete') {
         stopSepPolling();
         if (!sepHasSavedCurrentJob) {
@@ -626,7 +651,12 @@
           sepHasSavedCurrentJob = true;
         }
         showSepComplete(status);
-      } else if (status.status === 'error') {
+        return;
+      }
+
+      updateSepProcessingUI(status);
+
+      if (status.status === 'error') {
         stopSepPolling();
         showSepError(status.error || 'Processing failed.');
       }
@@ -683,14 +713,20 @@
   }
 
   function showSepComplete(status) {
+    // KILL every in-flight animation immediately
     cancelAllAnimations(sepInFlightAnimations);
 
     const dur = fmtDuration(status.durationMs);
     els.sepCompleteMeta.textContent = `${status.fileName || 'File'} · ${dur || '—'}`;
     const stats = status.stats || {};
 
+    // Switch to complete view FIRST
+    setSepState('complete');
+
+    // Reset final numbers to 0 immediately (no chance of intermediate frames)
     $$('#sepComplete .sep-result-number').forEach(el => { el.textContent = '0'; });
 
+    // Then animate cleanly from 0 to final
     setTimeout(() => {
       $$('#sepComplete .sep-result-number').forEach(el => {
         const key = el.dataset.stat;
@@ -698,8 +734,6 @@
         animateNumber(el, 0, val, 1200);
       });
     }, 100);
-
-    setSepState('complete');
   }
 
   els.sepDownloadBtn.addEventListener('click', () => {
@@ -725,6 +759,7 @@
   function showSepError(msg) {
     els.sepErrorMessage.textContent = msg || 'Unexpected error occurred.';
     stopSepPolling();
+    cancelAllAnimations(sepInFlightAnimations);
     setSepState('error');
     setView('separator');
   }
@@ -796,10 +831,10 @@
     const ngEl = document.querySelector('#viewDashboard [data-stat="nongoogle"]');
     const rmEl = document.querySelector('#viewDashboard [data-stat="removed"]');
 
-    if (totalEl) animateNumber(totalEl, 0, total, 900);
-    if (gEl) animateNumber(gEl, 0, g, 900);
-    if (ngEl) animateNumber(ngEl, 0, ng, 900);
-    if (rmEl) animateNumber(rmEl, 0, rm, 900);
+    if (totalEl) { totalEl.textContent = '0'; animateNumber(totalEl, 0, total, 900); }
+    if (gEl) { gEl.textContent = '0'; animateNumber(gEl, 0, g, 900); }
+    if (ngEl) { ngEl.textContent = '0'; animateNumber(ngEl, 0, ng, 900); }
+    if (rmEl) { rmEl.textContent = '0'; animateNumber(rmEl, 0, rm, 900); }
 
     const max = Math.max(g, ng, rm, 1);
     const gBar = document.querySelector('[data-fill="google"]');
