@@ -1,21 +1,33 @@
 'use strict';
 
-/* ============================================================
-   TIDY MAIL - DASHBOARD CONTROLLER
-   ============================================================ */
-
 (function () {
 
   const app = document.getElementById('app');
 
   let currentView = 'dashboard';
   let workspaceState = 'upload';
+  let sepState = 'upload';
+
+  // Full pipeline state
   let currentJobId = null;
   let pollInterval = null;
   let selectedFile = null;
   let lastStats = {};
   let lastProgress = 0;
-  let hasSavedCurrentJob = false;  // Dedup guard
+  let lockedTotal = 0;      // total is locked once set to prevent glitchy jumps
+  let hasSavedCurrentJob = false;
+  let inFlightAnimations = [];  // track requestAnimationFrame IDs to cancel
+
+  // Separator state
+  let sepCurrentJobId = null;
+  let sepPollInterval = null;
+  let sepSelectedFile = null;
+  let sepLastStats = {};
+  let sepLastProgress = 0;
+  let sepLockedTotal = 0;
+  let sepHasSavedCurrentJob = false;
+  let sepInFlightAnimations = [];
+
   const ACTIVITY_KEY = 'tidymail_activity';
 
   const $ = s => document.querySelector(s);
@@ -25,6 +37,7 @@
     navItems: $$('.nav-item'),
     breadcrumbCurrent: $('#breadcrumbCurrent'),
 
+    // Workspace
     uploadZone: $('#uploadZone'),
     fileInput: $('#fileInput'),
     filePreview: $('#filePreview'),
@@ -55,7 +68,42 @@
     wsComplete: $('#wsComplete'),
     wsError: $('#wsError'),
 
+    // Separator
+    sepUploadZone: $('#sepUploadZone'),
+    sepFileInput: $('#sepFileInput'),
+    sepFilePreview: $('#sepFilePreview'),
+    sepFilePreviewName: $('#sepFilePreviewName'),
+    sepFilePreviewSize: $('#sepFilePreviewSize'),
+    sepFilePreviewClear: $('#sepFilePreviewClear'),
+    sepUploadSubmit: $('#sepUploadSubmit'),
+    checkGoogleMx: $('#checkGoogleMx'),
+
+    sepProcessCount: $('#sepProcessCount'),
+    sepProcessTotal: $('#sepProcessTotal'),
+    sepProcessStep: $('#sepProcessStep'),
+    sepProgressFill: $('#sepProgressFill'),
+    sepLiveBusiness: $('#sepLiveBusiness'),
+    sepLiveConsumer: $('#sepLiveConsumer'),
+    sepLiveGoogle: $('#sepLiveGoogle'),
+    sepLiveGoogleCard: $('#sepLiveGoogleCard'),
+    sepPencilLoader: $('#sepPencilLoader'),
+
+    sepCompleteMeta: $('#sepCompleteMeta'),
+    sepDownloadBtn: $('#sepDownloadBtn'),
+    sepResetBtn: $('#sepResetBtn'),
+    sepResultGoogleCard: $('#sepResultGoogleCard'),
+
+    sepErrorMessage: $('#sepErrorMessage'),
+    sepRetryBtn: $('#sepRetryBtn'),
+
+    sepUpload: $('#sepUpload'),
+    sepProcessing: $('#sepProcessing'),
+    sepComplete: $('#sepComplete'),
+    sepError: $('#sepError'),
+
+    // Dashboard
     dashGoWorkspace: $('#dashGoWorkspace'),
+    dashGoSeparator: $('#dashGoSeparator'),
     dashGoActivity: $('#dashGoActivity'),
     dashLatestJob: $('#dashLatestJob'),
 
@@ -69,10 +117,8 @@
     if (currentView === view) return;
     currentView = view;
     app.className = `view-${view}`;
-    els.navItems.forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.view === view);
-    });
-    const labels = { dashboard: 'Dashboard', workspace: 'Workspace', activity: 'Activity Logs' };
+    els.navItems.forEach(btn => btn.classList.toggle('active', btn.dataset.view === view));
+    const labels = { dashboard: 'Dashboard', workspace: 'Workspace', separator: 'Domain Separator', activity: 'Activity Logs' };
     els.breadcrumbCurrent.textContent = labels[view] || view;
     if (view === 'dashboard') renderDashboard();
     if (view === 'activity') renderActivity();
@@ -80,10 +126,11 @@
 
   els.navItems.forEach(btn => btn.addEventListener('click', () => setView(btn.dataset.view)));
   els.dashGoWorkspace.addEventListener('click', () => setView('workspace'));
+  els.dashGoSeparator.addEventListener('click', () => setView('separator'));
   els.dashGoActivity.addEventListener('click', () => setView('activity'));
 
   // ============================================================
-  // WORKSPACE SUBSTATES
+  // SUBSTATE ROUTING
   // ============================================================
   function setWorkspaceState(state) {
     workspaceState = state;
@@ -92,21 +139,46 @@
     if (map[state]) map[state].classList.add('active');
   }
 
+  function setSepState(state) {
+    sepState = state;
+    [els.sepUpload, els.sepProcessing, els.sepComplete, els.sepError].forEach(el => el.classList.remove('active'));
+    const map = { upload: els.sepUpload, processing: els.sepProcessing, complete: els.sepComplete, error: els.sepError };
+    if (map[state]) map[state].classList.add('active');
+  }
+
   // ============================================================
-  // NUMBER ANIMATION
+  // NUMBER ANIMATION (with cancel tracking)
   // ============================================================
   function easeOutExpo(t) { return t === 1 ? 1 : 1 - Math.pow(2, -10 * t); }
 
-  function animateNumber(el, from, to, duration = 800) {
-    if (from === to) { el.textContent = fmt(to); return; }
+  function animateNumber(el, from, to, duration = 800, animationsArray = null) {
+    if (from === to) { el.textContent = fmt(to); return null; }
     const start = performance.now();
     const diff = to - from;
+    let rafId;
     function tick(now) {
       const p = Math.min((now - start) / duration, 1);
       el.textContent = fmt(Math.round(from + diff * easeOutExpo(p)));
-      if (p < 1) requestAnimationFrame(tick);
+      if (p < 1) {
+        rafId = requestAnimationFrame(tick);
+        if (animationsArray) {
+          // update the ID in the array
+          const idx = animationsArray.indexOf(rafId - 1);
+          if (idx !== -1) animationsArray[idx] = rafId;
+        }
+      }
     }
-    requestAnimationFrame(tick);
+    rafId = requestAnimationFrame(tick);
+    if (animationsArray) animationsArray.push(rafId);
+    return rafId;
+  }
+
+  function cancelAllAnimations(animationsArray) {
+    if (!animationsArray) return;
+    for (const id of animationsArray) {
+      try { cancelAnimationFrame(id); } catch (_) {}
+    }
+    animationsArray.length = 0;
   }
 
   function fmt(n) {
@@ -141,81 +213,96 @@
   }
 
   // ============================================================
-  // FILE UPLOAD
+  // GENERIC UPLOAD HANDLERS (factory)
   // ============================================================
-  els.uploadZone.addEventListener('click', () => els.fileInput.click());
+  function setupUpload({ zone, input, preview, previewName, previewSize, clearBtn, submitBtn, onSelect, onClear }) {
+    zone.addEventListener('click', () => input.click());
 
-  els.uploadZone.addEventListener('mousemove', (e) => {
-    const rect = els.uploadZone.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    els.uploadZone.style.setProperty('--mx', x + '%');
-    els.uploadZone.style.setProperty('--my', y + '%');
-  });
-
-  els.uploadZone.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      els.fileInput.click();
-    }
-  });
-
-  els.fileInput.addEventListener('change', (e) => {
-    const f = e.target.files[0];
-    if (f) selectFile(f);
-  });
-
-  ['dragenter', 'dragover'].forEach(ev => {
-    els.uploadZone.addEventListener(ev, (e) => {
-      e.preventDefault(); e.stopPropagation();
-      els.uploadZone.classList.add('drag-over');
+    zone.addEventListener('mousemove', (e) => {
+      const rect = zone.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      zone.style.setProperty('--mx', x + '%');
+      zone.style.setProperty('--my', y + '%');
     });
-  });
 
-  els.uploadZone.addEventListener('dragleave', (e) => {
-    e.preventDefault(); e.stopPropagation();
-    const r = els.uploadZone.getBoundingClientRect();
-    if (e.clientX <= r.left || e.clientX >= r.right || e.clientY <= r.top || e.clientY >= r.bottom) {
-      els.uploadZone.classList.remove('drag-over');
-    }
-  });
+    zone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        input.click();
+      }
+    });
 
-  els.uploadZone.addEventListener('drop', (e) => {
-    e.preventDefault(); e.stopPropagation();
-    els.uploadZone.classList.remove('drag-over');
-    const f = e.dataTransfer.files[0];
-    if (f) selectFile(f);
-  });
+    input.addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      if (f) onSelect(f);
+    });
+
+    ['dragenter', 'dragover'].forEach(ev => {
+      zone.addEventListener(ev, (e) => {
+        e.preventDefault(); e.stopPropagation();
+        zone.classList.add('drag-over');
+      });
+    });
+
+    zone.addEventListener('dragleave', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const r = zone.getBoundingClientRect();
+      if (e.clientX <= r.left || e.clientX >= r.right || e.clientY <= r.top || e.clientY >= r.bottom) {
+        zone.classList.remove('drag-over');
+      }
+    });
+
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      zone.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f) onSelect(f);
+    });
+
+    clearBtn.addEventListener('click', (e) => { e.stopPropagation(); onClear(); });
+  }
 
   document.body.addEventListener('dragover', e => e.preventDefault());
   document.body.addEventListener('drop', e => e.preventDefault());
 
-  els.filePreviewClear.addEventListener('click', (e) => { e.stopPropagation(); clearFile(); });
-
-  function selectFile(file) {
+  function validateFile(file, errorHandler) {
     const validExts = ['.csv', '.xls', '.xlsx'];
     const ext = '.' + file.name.split('.').pop().toLowerCase();
     if (!validExts.includes(ext)) {
-      showError('Invalid file type. Please upload CSV, XLS, or XLSX.');
-      return;
+      errorHandler('Invalid file type. Please upload CSV, XLS, or XLSX.');
+      return false;
     }
-    selectedFile = file;
-    els.filePreviewName.textContent = file.name;
-    els.filePreviewSize.textContent = fmtBytes(file.size);
-    els.filePreview.classList.add('visible');
-    els.uploadSubmit.disabled = false;
-  }
-
-  function clearFile() {
-    selectedFile = null;
-    els.fileInput.value = '';
-    els.filePreview.classList.remove('visible');
-    els.uploadSubmit.disabled = true;
+    return true;
   }
 
   // ============================================================
-  // UPLOAD SUBMIT
+  // FULL WORKSPACE UPLOAD
   // ============================================================
+  setupUpload({
+    zone: els.uploadZone,
+    input: els.fileInput,
+    preview: els.filePreview,
+    previewName: els.filePreviewName,
+    previewSize: els.filePreviewSize,
+    clearBtn: els.filePreviewClear,
+    submitBtn: els.uploadSubmit,
+    onSelect: (file) => {
+      if (!validateFile(file, showError)) return;
+      selectedFile = file;
+      els.filePreviewName.textContent = file.name;
+      els.filePreviewSize.textContent = fmtBytes(file.size);
+      els.filePreview.classList.add('visible');
+      els.uploadSubmit.disabled = false;
+    },
+    onClear: () => {
+      selectedFile = null;
+      els.fileInput.value = '';
+      els.filePreview.classList.remove('visible');
+      els.uploadSubmit.disabled = true;
+    },
+  });
+
   els.uploadSubmit.addEventListener('click', async () => {
     if (!selectedFile || els.uploadSubmit.disabled) return;
     els.uploadSubmit.disabled = true;
@@ -236,7 +323,7 @@
       }
       const data = await res.json();
       currentJobId = data.jobId;
-      hasSavedCurrentJob = false;  // Reset dedup flag for new job
+      hasSavedCurrentJob = false;
 
       resetProcessingUI();
       setWorkspaceState('processing');
@@ -247,9 +334,6 @@
     }
   });
 
-  // ============================================================
-  // POLLING
-  // ============================================================
   function startPolling() {
     if (pollInterval) clearInterval(pollInterval);
     pollInterval = setInterval(pollStatus, 800);
@@ -273,7 +357,7 @@
       if (status.status === 'complete') {
         stopPolling();
         if (!hasSavedCurrentJob) {
-          saveToActivity(status);
+          saveToActivity(status, 'full');
           hasSavedCurrentJob = true;
         }
         showComplete(status);
@@ -284,18 +368,17 @@
     } catch (_) {}
   }
 
-  // ============================================================
-  // PROCESSING UI
-  // ============================================================
   const STAGE_ORDER = ['parsing', 'cleaning', 'fixing', 'validating', 'dns', 'mx', 'categorizing', 'complete'];
 
   function resetProcessingUI() {
+    cancelAllAnimations(inFlightAnimations);
     els.processCount.textContent = '0';
     els.processTotal.textContent = 'of 0';
     els.processStep.textContent = 'Starting up...';
     els.progressFill.style.width = '0%';
     lastStats = {};
     lastProgress = 0;
+    lockedTotal = 0;
     $$('.pipeline-dot').forEach(d => d.classList.remove('completed', 'active'));
     ['liveGoogle', 'liveNonGoogle', 'liveRemoved', 'liveReview'].forEach(k => els[k].textContent = '0');
     els.pencilLoader.classList.remove('visible');
@@ -303,14 +386,25 @@
 
   function updateProcessingUI(status) {
     els.processStep.textContent = status.currentStep || 'Processing...';
-    const p = status.progress || 0, t = status.total || 0;
+    const p = status.progress || 0;
+    const t = status.total || 0;
 
-    if (p !== lastProgress) {
-      animateNumber(els.processCount, lastProgress, p, 600);
-      lastProgress = p;
+    // LOCK TOTAL: only update visible total if it goes UP or if we haven't seen one yet.
+    // This prevents "5 of 13567" glitches where a later stage reports a smaller total.
+    if (t > lockedTotal) {
+      lockedTotal = t;
     }
-    els.processTotal.textContent = `of ${fmt(t)}`;
-    els.progressFill.style.width = t > 0 ? `${Math.min((p / t) * 100, 100)}%` : '0%';
+    els.processTotal.textContent = `of ${fmt(lockedTotal)}`;
+
+    // Cap progress at lockedTotal so we never show weird "12000 of 5000"
+    const safeP = Math.min(p, lockedTotal || p);
+
+    if (safeP !== lastProgress) {
+      animateNumber(els.processCount, lastProgress, safeP, 500, inFlightAnimations);
+      lastProgress = safeP;
+    }
+
+    els.progressFill.style.width = lockedTotal > 0 ? `${Math.min((safeP / lockedTotal) * 100, 100)}%` : '0%';
 
     updatePipelineDots(status.status);
 
@@ -332,13 +426,13 @@
   }
 
   function updateLive(el, from, to) {
-    if (from !== to) animateNumber(el, from, to, 500);
+    if (from !== to) animateNumber(el, from, to, 500, inFlightAnimations);
   }
 
   function updatePipelineDots(status) {
     const idx = STAGE_ORDER.indexOf(status);
     if (idx === -1) return;
-    $$('.pipeline-dot').forEach(dot => {
+    $$('#pipelineDots .pipeline-dot').forEach(dot => {
       const di = STAGE_ORDER.indexOf(dot.dataset.stage);
       dot.classList.remove('completed', 'active');
       if (di < idx) dot.classList.add('completed');
@@ -346,18 +440,25 @@
     });
   }
 
-  // ============================================================
-  // COMPLETE
-  // ============================================================
   function showComplete(status) {
+    // CRITICAL FIX: cancel all in-flight number animations before setting final values
+    cancelAllAnimations(inFlightAnimations);
+
     const dur = fmtDuration(status.durationMs);
     els.completeMeta.textContent = `Processed ${status.fileName || 'your file'}${dur ? ' in ' + dur : ''}`;
     const stats = status.stats || {};
-    $$('#wsComplete .result-card-number').forEach(el => {
-      const key = el.dataset.stat;
-      const val = stats[key] || 0;
-      setTimeout(() => animateNumber(el, 0, val, 1200), 100);
-    });
+
+    // Set all result cards to 0 first, then animate
+    $$('#wsComplete .result-card-number').forEach(el => { el.textContent = '0'; });
+
+    setTimeout(() => {
+      $$('#wsComplete .result-card-number').forEach(el => {
+        const key = el.dataset.stat;
+        const val = stats[key] || 0;
+        animateNumber(el, 0, val, 1200);
+      });
+    }, 100);
+
     setWorkspaceState('complete');
   }
 
@@ -372,14 +473,14 @@
       currentJobId = null;
     }
     hasSavedCurrentJob = false;
-    clearFile();
+    selectedFile = null;
+    els.fileInput.value = '';
+    els.filePreview.classList.remove('visible');
+    els.uploadSubmit.disabled = true;
     resetProcessingUI();
     setWorkspaceState('upload');
   });
 
-  // ============================================================
-  // ERROR
-  // ============================================================
   function showError(msg) {
     els.errorMessage.textContent = msg || 'Unexpected error occurred.';
     stopPolling();
@@ -393,25 +494,238 @@
       currentJobId = null;
     }
     hasSavedCurrentJob = false;
-    clearFile();
+    selectedFile = null;
+    els.fileInput.value = '';
+    els.filePreview.classList.remove('visible');
+    els.uploadSubmit.disabled = true;
     resetProcessingUI();
     setWorkspaceState('upload');
   });
 
   // ============================================================
-  // ACTIVITY (with dedup by jobId)
+  // SEPARATOR UPLOAD
   // ============================================================
-  function saveToActivity(status) {
-    try {
-      const activity = getActivity();
+  setupUpload({
+    zone: els.sepUploadZone,
+    input: els.sepFileInput,
+    preview: els.sepFilePreview,
+    previewName: els.sepFilePreviewName,
+    previewSize: els.sepFilePreviewSize,
+    clearBtn: els.sepFilePreviewClear,
+    submitBtn: els.sepUploadSubmit,
+    onSelect: (file) => {
+      if (!validateFile(file, showSepError)) return;
+      sepSelectedFile = file;
+      els.sepFilePreviewName.textContent = file.name;
+      els.sepFilePreviewSize.textContent = fmtBytes(file.size);
+      els.sepFilePreview.classList.add('visible');
+      els.sepUploadSubmit.disabled = false;
+    },
+    onClear: () => {
+      sepSelectedFile = null;
+      els.sepFileInput.value = '';
+      els.sepFilePreview.classList.remove('visible');
+      els.sepUploadSubmit.disabled = true;
+    },
+  });
 
-      // Dedup: if this jobId already exists in activity, do NOT add again
-      if (status.jobId && activity.some(entry => entry.jobId === status.jobId)) {
+  els.sepUploadSubmit.addEventListener('click', async () => {
+    if (!sepSelectedFile || els.sepUploadSubmit.disabled) return;
+    els.sepUploadSubmit.disabled = true;
+
+    try {
+      if (sepCurrentJobId) {
+        try { await fetch(`/api/job/${sepCurrentJobId}`, { method: 'DELETE' }); } catch (_) {}
+        sepCurrentJobId = null;
+      }
+
+      const checkMx = els.checkGoogleMx.checked;
+      const fd = new FormData();
+      fd.append('file', sepSelectedFile);
+      fd.append('checkGoogleMx', checkMx ? 'true' : 'false');
+
+      // Show/hide Google MX card based on checkbox
+      if (checkMx) {
+        els.sepLiveGoogleCard.classList.remove('hidden');
+        els.sepResultGoogleCard.classList.remove('hidden');
+      } else {
+        els.sepLiveGoogleCard.classList.add('hidden');
+        els.sepResultGoogleCard.classList.add('hidden');
+      }
+
+      const res = await fetch('/api/separator', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(err.error || `Upload failed (${res.status})`);
+      }
+      const data = await res.json();
+      sepCurrentJobId = data.jobId;
+      sepHasSavedCurrentJob = false;
+
+      resetSepProcessingUI();
+      setSepState('processing');
+      startSepPolling();
+    } catch (err) {
+      showSepError(err.message || 'Failed to upload file.');
+      els.sepUploadSubmit.disabled = false;
+    }
+  });
+
+  function startSepPolling() {
+    if (sepPollInterval) clearInterval(sepPollInterval);
+    sepPollInterval = setInterval(sepPollStatus, 800);
+    sepPollStatus();
+  }
+
+  function stopSepPolling() {
+    if (sepPollInterval) { clearInterval(sepPollInterval); sepPollInterval = null; }
+  }
+
+  async function sepPollStatus() {
+    if (!sepCurrentJobId) return;
+    try {
+      const res = await fetch(`/api/status/${sepCurrentJobId}`);
+      if (!res.ok) {
+        if (res.status === 404) { stopSepPolling(); showSepError('Job not found. It may have expired.'); }
         return;
       }
+      const status = await res.json();
+      updateSepProcessingUI(status);
+      if (status.status === 'complete') {
+        stopSepPolling();
+        if (!sepHasSavedCurrentJob) {
+          saveToActivity(status, 'separator');
+          sepHasSavedCurrentJob = true;
+        }
+        showSepComplete(status);
+      } else if (status.status === 'error') {
+        stopSepPolling();
+        showSepError(status.error || 'Processing failed.');
+      }
+    } catch (_) {}
+  }
+
+  function resetSepProcessingUI() {
+    cancelAllAnimations(sepInFlightAnimations);
+    els.sepProcessCount.textContent = '0';
+    els.sepProcessTotal.textContent = 'of 0';
+    els.sepProcessStep.textContent = 'Starting...';
+    els.sepProgressFill.style.width = '0%';
+    sepLastStats = {};
+    sepLastProgress = 0;
+    sepLockedTotal = 0;
+    els.sepLiveBusiness.textContent = '0';
+    els.sepLiveConsumer.textContent = '0';
+    els.sepLiveGoogle.textContent = '0';
+    els.sepPencilLoader.classList.remove('visible');
+  }
+
+  function updateSepProcessingUI(status) {
+    els.sepProcessStep.textContent = status.currentStep || 'Processing...';
+    const p = status.progress || 0;
+    const t = status.total || 0;
+
+    if (t > sepLockedTotal) sepLockedTotal = t;
+    els.sepProcessTotal.textContent = `of ${fmt(sepLockedTotal)}`;
+
+    const safeP = Math.min(p, sepLockedTotal || p);
+
+    if (safeP !== sepLastProgress) {
+      animateNumber(els.sepProcessCount, sepLastProgress, safeP, 500, sepInFlightAnimations);
+      sepLastProgress = safeP;
+    }
+    els.sepProgressFill.style.width = sepLockedTotal > 0 ? `${Math.min((safeP / sepLockedTotal) * 100, 100)}%` : '0%';
+
+    if (status.stats) {
+      updateSepLive(els.sepLiveBusiness, sepLastStats.business || 0, status.stats.business || 0);
+      updateSepLive(els.sepLiveConsumer, sepLastStats.consumer || 0, status.stats.consumer || 0);
+      updateSepLive(els.sepLiveGoogle, sepLastStats.googleWorkspace || 0, status.stats.googleWorkspace || 0);
+      sepLastStats = { ...status.stats };
+    }
+
+    if (status.status === 'mx') {
+      els.sepPencilLoader.classList.add('visible');
+    } else {
+      els.sepPencilLoader.classList.remove('visible');
+    }
+  }
+
+  function updateSepLive(el, from, to) {
+    if (from !== to) animateNumber(el, from, to, 500, sepInFlightAnimations);
+  }
+
+  function showSepComplete(status) {
+    cancelAllAnimations(sepInFlightAnimations);
+
+    const dur = fmtDuration(status.durationMs);
+    els.sepCompleteMeta.textContent = `${status.fileName || 'File'} · ${dur || '—'}`;
+    const stats = status.stats || {};
+
+    $$('#sepComplete .sep-result-number').forEach(el => { el.textContent = '0'; });
+
+    setTimeout(() => {
+      $$('#sepComplete .sep-result-number').forEach(el => {
+        const key = el.dataset.stat;
+        const val = stats[key] || 0;
+        animateNumber(el, 0, val, 1200);
+      });
+    }, 100);
+
+    setSepState('complete');
+  }
+
+  els.sepDownloadBtn.addEventListener('click', () => {
+    if (!sepCurrentJobId) return;
+    window.location.href = `/api/download/${sepCurrentJobId}`;
+  });
+
+  els.sepResetBtn.addEventListener('click', async () => {
+    if (sepCurrentJobId) {
+      try { await fetch(`/api/job/${sepCurrentJobId}`, { method: 'DELETE' }); } catch (_) {}
+      sepCurrentJobId = null;
+    }
+    sepHasSavedCurrentJob = false;
+    sepSelectedFile = null;
+    els.sepFileInput.value = '';
+    els.sepFilePreview.classList.remove('visible');
+    els.sepUploadSubmit.disabled = true;
+    els.checkGoogleMx.checked = false;
+    resetSepProcessingUI();
+    setSepState('upload');
+  });
+
+  function showSepError(msg) {
+    els.sepErrorMessage.textContent = msg || 'Unexpected error occurred.';
+    stopSepPolling();
+    setSepState('error');
+    setView('separator');
+  }
+
+  els.sepRetryBtn.addEventListener('click', async () => {
+    if (sepCurrentJobId) {
+      try { await fetch(`/api/job/${sepCurrentJobId}`, { method: 'DELETE' }); } catch (_) {}
+      sepCurrentJobId = null;
+    }
+    sepHasSavedCurrentJob = false;
+    sepSelectedFile = null;
+    els.sepFileInput.value = '';
+    els.sepFilePreview.classList.remove('visible');
+    els.sepUploadSubmit.disabled = true;
+    resetSepProcessingUI();
+    setSepState('upload');
+  });
+
+  // ============================================================
+  // ACTIVITY (shared, tags mode)
+  // ============================================================
+  function saveToActivity(status, mode) {
+    try {
+      const activity = getActivity();
+      if (status.jobId && activity.some(entry => entry.jobId === status.jobId)) return;
 
       const entry = {
         jobId: status.jobId,
+        mode: mode || 'full',
         fileName: status.fileName,
         completedAt: status.completedAt || new Date().toISOString(),
         durationMs: status.durationMs,
@@ -426,16 +740,11 @@
     try {
       const raw = localStorage.getItem(ACTIVITY_KEY);
       const parsed = raw ? JSON.parse(raw) : [];
-
-      // On read, also dedupe by jobId as safety measure for old data
       const seen = new Set();
       const deduped = [];
       for (const entry of parsed) {
         const key = entry.jobId || `${entry.fileName}-${entry.completedAt}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          deduped.push(entry);
-        }
+        if (!seen.has(key)) { seen.add(key); deduped.push(entry); }
       }
       return deduped;
     } catch (_) { return []; }
@@ -446,11 +755,13 @@
   // ============================================================
   function renderDashboard() {
     const activity = getActivity();
+    // find latest FULL pipeline job for the stats (separator has different stats shape)
+    const latestFull = activity.find(e => e.mode !== 'separator');
     const latest = activity[0];
 
-    const g = latest ? (latest.stats.googleWorkspace || 0) : 0;
-    const ng = latest ? (latest.stats.nonGoogle || 0) : 0;
-    const rm = latest ? (latest.stats.removed || 0) : 0;
+    const g = latestFull ? (latestFull.stats.googleWorkspace || 0) : 0;
+    const ng = latestFull ? (latestFull.stats.nonGoogle || 0) : 0;
+    const rm = latestFull ? (latestFull.stats.removed || 0) : 0;
     const total = g + ng + rm;
 
     const totalEl = document.querySelector('#viewDashboard [data-stat="total"]');
@@ -472,6 +783,7 @@
     if (rmBar) rmBar.style.width = `${(rm / max) * 100}%`;
 
     if (latest) {
+      const modeLabel = latest.mode === 'separator' ? 'Domain Separator' : 'Full Verification';
       els.dashLatestJob.innerHTML = `
         <div class="action-btn" style="cursor: default;">
           <div class="action-btn-icon">
@@ -482,7 +794,7 @@
           </div>
           <div class="action-btn-text">
             <span class="action-btn-title">${escapeHtml(latest.fileName || 'Untitled')}</span>
-            <span class="action-btn-desc">${fmtTimeAgo(latest.completedAt)} · ${fmtDuration(latest.durationMs)}</span>
+            <span class="action-btn-desc">${modeLabel} · ${fmtTimeAgo(latest.completedAt)} · ${fmtDuration(latest.durationMs)}</span>
           </div>
         </div>
       `;
@@ -522,26 +834,42 @@
       return;
     }
 
-    els.activityContainer.innerHTML = `<div class="activity-list">${activity.map((entry, i) => `
-      <div class="activity-item" style="animation-delay: ${i * 0.04}s;">
-        <div class="activity-item-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-            <polyline points="22 4 12 14.01 9 11.01"/>
-          </svg>
-        </div>
-        <div class="activity-item-info">
-          <span class="activity-item-name">${escapeHtml(entry.fileName || 'Untitled')}</span>
-          <span class="activity-item-meta">Duration ${fmtDuration(entry.durationMs)}</span>
-        </div>
-        <div class="activity-item-stats">
+    els.activityContainer.innerHTML = `<div class="activity-list">${activity.map((entry, i) => {
+      const isSep = entry.mode === 'separator';
+      const iconClass = isSep ? 'mode-separator' : '';
+      const modeLabel = isSep ? 'Separator' : 'Full';
+
+      let statsHtml;
+      if (isSep) {
+        statsHtml = `
+          <span class="activity-item-stat">Business <strong>${fmt(entry.stats.business || 0)}</strong></span>
+          <span class="activity-item-stat">Consumer <strong>${fmt(entry.stats.consumer || 0)}</strong></span>
+          <span class="activity-item-stat">Google <strong>${fmt(entry.stats.googleWorkspace || 0)}</strong></span>
+        `;
+      } else {
+        statsHtml = `
           <span class="activity-item-stat">Google <strong>${fmt(entry.stats.googleWorkspace || 0)}</strong></span>
           <span class="activity-item-stat">Other <strong>${fmt(entry.stats.nonGoogle || 0)}</strong></span>
           <span class="activity-item-stat">Removed <strong>${fmt(entry.stats.removed || 0)}</strong></span>
+        `;
+      }
+
+      const iconSvg = isSep
+        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/><line x1="12" y1="3" x2="12" y2="21"/></svg>`
+        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+
+      return `
+      <div class="activity-item" style="animation-delay: ${i * 0.04}s;">
+        <div class="activity-item-icon ${iconClass}">${iconSvg}</div>
+        <div class="activity-item-info">
+          <span class="activity-item-name">${escapeHtml(entry.fileName || 'Untitled')}</span>
+          <span class="activity-item-meta">${modeLabel} · ${fmtDuration(entry.durationMs)}</span>
         </div>
+        <div class="activity-item-stats">${statsHtml}</div>
         <div class="activity-item-time">${fmtTimeAgo(entry.completedAt)}</div>
       </div>
-    `).join('')}</div>`;
+      `;
+    }).join('')}</div>`;
   }
 
   function escapeHtml(str) {
@@ -554,6 +882,7 @@
   // INIT
   // ============================================================
   setWorkspaceState('upload');
+  setSepState('upload');
   setView('dashboard');
   console.log('[APP] Tidy Mail initialized');
 
