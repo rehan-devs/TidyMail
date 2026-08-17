@@ -14,9 +14,9 @@
   let selectedFile = null;
   let lastStats = {};
   let lastProgress = 0;
-  let lockedTotal = 0;      // total is locked once set to prevent glitchy jumps
+  let lockedTotal = 0;
   let hasSavedCurrentJob = false;
-  let inFlightAnimations = [];  // track requestAnimationFrame IDs to cancel
+  let inFlightAnimations = [];
 
   // Separator state
   let sepCurrentJobId = null;
@@ -29,6 +29,7 @@
   let sepInFlightAnimations = [];
 
   const ACTIVITY_KEY = 'tidymail_activity';
+  const ENVELOPE_PEEKED_KEY = 'tidymail_envelope_peeked';
 
   const $ = s => document.querySelector(s);
   const $$ = s => document.querySelectorAll(s);
@@ -101,6 +102,9 @@
     sepComplete: $('#sepComplete'),
     sepError: $('#sepError'),
 
+    // Envelopes
+    envelopeRow: $('#envelopeRow'),
+
     // Dashboard
     dashGoWorkspace: $('#dashGoWorkspace'),
     dashGoSeparator: $('#dashGoSeparator'),
@@ -147,7 +151,38 @@
   }
 
   // ============================================================
-  // NUMBER ANIMATION (with cancel tracking)
+  // ENVELOPES — hide hint permanently after first hover
+  // ============================================================
+  function initEnvelopes() {
+    if (!els.envelopeRow) return;
+
+    // Check if user has already peeked before
+    try {
+      if (localStorage.getItem(ENVELOPE_PEEKED_KEY) === '1') {
+        els.envelopeRow.classList.add('peeked');
+        return;
+      }
+    } catch (_) {}
+
+    const markPeeked = () => {
+      els.envelopeRow.classList.add('peeked');
+      try { localStorage.setItem(ENVELOPE_PEEKED_KEY, '1'); } catch (_) {}
+      // remove listeners once triggered
+      envelopes.forEach(env => {
+        env.removeEventListener('mouseenter', markPeeked);
+        env.removeEventListener('focus', markPeeked);
+      });
+    };
+
+    const envelopes = els.envelopeRow.querySelectorAll('.envelope');
+    envelopes.forEach(env => {
+      env.addEventListener('mouseenter', markPeeked, { once: false });
+      env.addEventListener('focus', markPeeked, { once: false });
+    });
+  }
+
+  // ============================================================
+  // NUMBER ANIMATION
   // ============================================================
   function easeOutExpo(t) { return t === 1 ? 1 : 1 - Math.pow(2, -10 * t); }
 
@@ -162,7 +197,6 @@
       if (p < 1) {
         rafId = requestAnimationFrame(tick);
         if (animationsArray) {
-          // update the ID in the array
           const idx = animationsArray.indexOf(rafId - 1);
           if (idx !== -1) animationsArray[idx] = rafId;
         }
@@ -213,7 +247,7 @@
   }
 
   // ============================================================
-  // GENERIC UPLOAD HANDLERS (factory)
+  // GENERIC UPLOAD HANDLERS
   // ============================================================
   function setupUpload({ zone, input, preview, previewName, previewSize, clearBtn, submitBtn, onSelect, onClear }) {
     zone.addEventListener('click', () => input.click());
@@ -389,14 +423,11 @@
     const p = status.progress || 0;
     const t = status.total || 0;
 
-    // LOCK TOTAL: only update visible total if it goes UP or if we haven't seen one yet.
-    // This prevents "5 of 13567" glitches where a later stage reports a smaller total.
     if (t > lockedTotal) {
       lockedTotal = t;
     }
     els.processTotal.textContent = `of ${fmt(lockedTotal)}`;
 
-    // Cap progress at lockedTotal so we never show weird "12000 of 5000"
     const safeP = Math.min(p, lockedTotal || p);
 
     if (safeP !== lastProgress) {
@@ -441,14 +472,12 @@
   }
 
   function showComplete(status) {
-    // CRITICAL FIX: cancel all in-flight number animations before setting final values
     cancelAllAnimations(inFlightAnimations);
 
     const dur = fmtDuration(status.durationMs);
     els.completeMeta.textContent = `Processed ${status.fileName || 'your file'}${dur ? ' in ' + dur : ''}`;
     const stats = status.stats || {};
 
-    // Set all result cards to 0 first, then animate
     $$('#wsComplete .result-card-number').forEach(el => { el.textContent = '0'; });
 
     setTimeout(() => {
@@ -544,7 +573,6 @@
       fd.append('file', sepSelectedFile);
       fd.append('checkGoogleMx', checkMx ? 'true' : 'false');
 
-      // Show/hide Google MX card based on checkbox
       if (checkMx) {
         els.sepLiveGoogleCard.classList.remove('hidden');
         els.sepResultGoogleCard.classList.remove('hidden');
@@ -716,7 +744,7 @@
   });
 
   // ============================================================
-  // ACTIVITY (shared, tags mode)
+  // ACTIVITY
   // ============================================================
   function saveToActivity(status, mode) {
     try {
@@ -755,7 +783,6 @@
   // ============================================================
   function renderDashboard() {
     const activity = getActivity();
-    // find latest FULL pipeline job for the stats (separator has different stats shape)
     const latestFull = activity.find(e => e.mode !== 'separator');
     const latest = activity[0];
 
@@ -884,6 +911,7 @@
   setWorkspaceState('upload');
   setSepState('upload');
   setView('dashboard');
+  initEnvelopes();
   console.log('[APP] Tidy Mail initialized');
 
 })();

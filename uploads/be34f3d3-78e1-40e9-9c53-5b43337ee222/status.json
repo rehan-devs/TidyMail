@@ -1,0 +1,22 @@
+{
+  "jobId": "be34f3d3-78e1-40e9-9c53-5b43337ee222",
+  "mode": "separator",
+  "checkGoogleMx": false,
+  "status": "complete",
+  "currentStep": "Done! Your results are ready.",
+  "progress": 231067,
+  "total": 231067,
+  "fileName": "master file (1).xlsx",
+  "startedAt": "2026-08-17T03:45:57.637Z",
+  "stats": {
+    "business": 119505,
+    "consumer": 111562,
+    "googleWorkspace": 0,
+    "checked": 0,
+    "totalUnique": 231067,
+    "totalRaw": 231067
+  },
+  "error": null,
+  "completedAt": "2026-08-17T03:46:08.533Z",
+  "durationMs": 10895
+}

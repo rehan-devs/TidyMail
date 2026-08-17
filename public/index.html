@@ -215,7 +215,7 @@
       </section>
 
       <!-- ============================================ -->
-      <!-- WORKSPACE VIEW (full pipeline)                -->
+      <!-- WORKSPACE VIEW                                -->
       <!-- ============================================ -->
       <section class="view view-work" id="viewWorkspace">
         <div class="view-container">
@@ -224,7 +224,6 @@
             <p class="view-subtitle">Full verification: cleans, fixes typos, validates format, checks DNS</p>
           </div>
 
-          <!-- UPLOAD -->
           <div class="workspace-state workspace-upload" id="wsUpload">
             <div class="upload-zone" id="uploadZone" tabindex="0" role="button">
               <div class="upload-zone-glow"></div>
@@ -298,7 +297,6 @@
             </div>
           </div>
 
-          <!-- PROCESSING -->
           <div class="workspace-state workspace-processing" id="wsProcessing">
             <div class="processing-hero">
               <div class="processing-number-block">
@@ -378,7 +376,6 @@
             </div>
           </div>
 
-          <!-- COMPLETE -->
           <div class="workspace-state workspace-complete" id="wsComplete">
             <div class="complete-hero">
               <h1 class="complete-title">Done.</h1>
@@ -441,7 +438,6 @@
             </div>
           </div>
 
-          <!-- ERROR -->
           <div class="workspace-state workspace-error" id="wsError">
             <div class="error-container">
               <div class="error-icon-wrap">
@@ -466,52 +462,114 @@
       <!-- ============================================ -->
       <section class="view view-sep" id="viewSeparator">
         <div class="view-container">
-          <div class="view-header sep-header">
-            <div class="sep-header-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8 3H5a2 2 0 0 0-2 2v3"/>
-                <path d="M21 8V5a2 2 0 0 0-2-2h-3"/>
-                <path d="M3 16v3a2 2 0 0 0 2 2h3"/>
-                <path d="M16 21h3a2 2 0 0 0 2-2v-3"/>
-                <line x1="12" y1="3" x2="12" y2="21"/>
-              </svg>
-            </div>
-            <div>
-              <h1 class="view-title">Domain Separator</h1>
-              <p class="view-subtitle">Split emails into business and consumer domains. Supports up to 500,000 emails.</p>
-            </div>
+
+          <div class="view-header">
+            <h1 class="view-title">Domain Separator</h1>
+            <p class="view-subtitle">Split emails into business and consumer domains. Supports up to 500,000 emails.</p>
           </div>
 
           <!-- UPLOAD -->
           <div class="sep-state sep-upload" id="sepUpload">
-            <div class="sep-info-grid">
-              <div class="sep-info-card">
-                <div class="sep-info-icon business-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 21h18"/>
-                    <path d="M5 21V7l8-4v18"/>
-                    <path d="M19 21V11l-6-4"/>
+
+            <!-- ENVELOPES -->
+            <div class="envelope-row" id="envelopeRow">
+
+              <!-- BUSINESS ENVELOPE -->
+              <div class="envelope envelope-business" data-envelope="business" tabindex="0">
+                <div class="envelope-hint">
+                  <span class="envelope-hint-text">Hover to peek</span>
+                  <svg class="envelope-hint-arrow" viewBox="0 0 40 40" fill="none">
+                    <path d="M 35 5 C 35 5, 15 5, 10 25 M 10 25 L 3 18 M 10 25 L 18 22"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                 </div>
-                <div class="sep-info-text">
-                  <div class="sep-info-title">Business Domains</div>
-                  <div class="sep-info-desc">All custom company domains</div>
+
+                <div class="envelope-body">
+                  <!-- Back of envelope -->
+                  <div class="envelope-back"></div>
+
+                  <!-- Letter cards (peek out on hover) -->
+                  <div class="letter letter-3">
+                    <div class="letter-shine"></div>
+                    <span class="letter-line"></span>
+                    <span class="letter-line short"></span>
+                    <div class="letter-tag">acme.co</div>
+                  </div>
+                  <div class="letter letter-2">
+                    <div class="letter-shine"></div>
+                    <span class="letter-line"></span>
+                    <span class="letter-line short"></span>
+                    <div class="letter-tag">stripe.com</div>
+                  </div>
+                  <div class="letter letter-1">
+                    <div class="letter-shine"></div>
+                    <span class="letter-line"></span>
+                    <span class="letter-line short"></span>
+                    <div class="letter-tag">notion.so</div>
+                  </div>
+
+                  <!-- Front / flap -->
+                  <div class="envelope-front">
+                    <div class="envelope-flap"></div>
+                    <div class="envelope-body-face"></div>
+                    <div class="wax-seal wax-seal-business"></div>
+                  </div>
+                </div>
+
+                <div class="envelope-label">
+                  <span class="envelope-label-title">Business Domains</span>
+                  <span class="envelope-label-desc">Custom company domains</span>
                 </div>
               </div>
-              <div class="sep-info-card">
-                <div class="sep-info-icon consumer-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                    <circle cx="12" cy="7" r="4"/>
+
+              <!-- CONSUMER ENVELOPE -->
+              <div class="envelope envelope-consumer" data-envelope="consumer" tabindex="0">
+                <div class="envelope-hint">
+                  <span class="envelope-hint-text">Hover to peek</span>
+                  <svg class="envelope-hint-arrow" viewBox="0 0 40 40" fill="none">
+                    <path d="M 35 5 C 35 5, 15 5, 10 25 M 10 25 L 3 18 M 10 25 L 18 22"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                 </div>
-                <div class="sep-info-text">
-                  <div class="sep-info-title">Consumer Domains</div>
-                  <div class="sep-info-desc">gmail, yahoo, hotmail, aol, msn, icloud</div>
+
+                <div class="envelope-body">
+                  <div class="envelope-back"></div>
+
+                  <div class="letter letter-3">
+                    <div class="letter-shine"></div>
+                    <span class="letter-line"></span>
+                    <span class="letter-line short"></span>
+                    <div class="letter-tag">@yahoo.com</div>
+                  </div>
+                  <div class="letter letter-2">
+                    <div class="letter-shine"></div>
+                    <span class="letter-line"></span>
+                    <span class="letter-line short"></span>
+                    <div class="letter-tag">@hotmail.com</div>
+                  </div>
+                  <div class="letter letter-1">
+                    <div class="letter-shine"></div>
+                    <span class="letter-line"></span>
+                    <span class="letter-line short"></span>
+                    <div class="letter-tag">@gmail.com</div>
+                  </div>
+
+                  <div class="envelope-front">
+                    <div class="envelope-flap"></div>
+                    <div class="envelope-body-face"></div>
+                    <div class="wax-seal wax-seal-consumer"></div>
+                  </div>
+                </div>
+
+                <div class="envelope-label">
+                  <span class="envelope-label-title">Consumer Domains</span>
+                  <span class="envelope-label-desc">gmail, yahoo, hotmail, aol, icloud</span>
                 </div>
               </div>
+
             </div>
 
+            <!-- UPLOAD ZONE -->
             <div class="upload-zone sep-upload-zone" id="sepUploadZone" tabindex="0" role="button">
               <div class="upload-zone-glow"></div>
               <div class="upload-zone-inner">
@@ -548,7 +606,6 @@
               </button>
             </div>
 
-            <!-- Option: check Google MX -->
             <div class="sep-option-card">
               <label class="neon-checkbox">
                 <input type="checkbox" id="checkGoogleMx" />
@@ -651,7 +708,6 @@
               </div>
             </div>
 
-            <!-- Reuse pencil loader -->
             <div class="pencil-loader-wrap" id="sepPencilLoader">
               <svg xmlns="http://www.w3.org/2000/svg" height="100px" width="100px" viewBox="0 0 200 200" class="pencil">
                 <defs>
