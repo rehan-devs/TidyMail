@@ -17,6 +17,10 @@
   let lockedTotal = 0;
   let hasSavedCurrentJob = false;
   let inFlightAnimations = [];
+  let pollInFlight = false;        // prevent overlapping fetches
+  let pollSeq = 0;                 // request sequence for ordering
+  let lastAppliedSeq = 0;          // highest seq we've applied
+  let jobCompleted = false;        // hard lock after completion
 
   // Separator state
   let sepCurrentJobId = null;
@@ -27,6 +31,10 @@
   let sepLockedTotal = 0;
   let sepHasSavedCurrentJob = false;
   let sepInFlightAnimations = [];
+  let sepPollInFlight = false;
+  let sepPollSeq = 0;
+  let sepLastAppliedSeq = 0;
+  let sepJobCompleted = false;
 
   const ACTIVITY_KEY = 'tidymail_activity';
   const ENVELOPE_PEEKED_KEY = 'tidymail_envelope_peeked';
@@ -38,7 +46,6 @@
     navItems: $$('.nav-item'),
     breadcrumbCurrent: $('#breadcrumbCurrent'),
 
-    // Workspace
     uploadZone: $('#uploadZone'),
     fileInput: $('#fileInput'),
     filePreview: $('#filePreview'),
@@ -69,7 +76,6 @@
     wsComplete: $('#wsComplete'),
     wsError: $('#wsError'),
 
-    // Separator
     sepUploadZone: $('#sepUploadZone'),
     sepFileInput: $('#sepFileInput'),
     sepFilePreview: $('#sepFilePreview'),
@@ -102,10 +108,8 @@
     sepComplete: $('#sepComplete'),
     sepError: $('#sepError'),
 
-    // Envelopes
     envelopeRow: $('#envelopeRow'),
 
-    // Dashboard
     dashGoWorkspace: $('#dashGoWorkspace'),
     dashGoSeparator: $('#dashGoSeparator'),
     dashGoActivity: $('#dashGoActivity'),
@@ -133,9 +137,6 @@
   els.dashGoSeparator.addEventListener('click', () => setView('separator'));
   els.dashGoActivity.addEventListener('click', () => setView('activity'));
 
-  // ============================================================
-  // SUBSTATE ROUTING
-  // ============================================================
   function setWorkspaceState(state) {
     workspaceState = state;
     [els.wsUpload, els.wsProcessing, els.wsComplete, els.wsError].forEach(el => el.classList.remove('active'));
@@ -155,16 +156,13 @@
   // ============================================================
   function initEnvelopes() {
     if (!els.envelopeRow) return;
-
     try {
       if (localStorage.getItem(ENVELOPE_PEEKED_KEY) === '1') {
         els.envelopeRow.classList.add('peeked');
         return;
       }
     } catch (_) {}
-
     const envelopes = els.envelopeRow.querySelectorAll('.envelope');
-
     const markPeeked = () => {
       els.envelopeRow.classList.add('peeked');
       try { localStorage.setItem(ENVELOPE_PEEKED_KEY, '1'); } catch (_) {}
@@ -173,7 +171,6 @@
         env.removeEventListener('focus', markPeeked);
       });
     };
-
     envelopes.forEach(env => {
       env.addEventListener('mouseenter', markPeeked, { once: false });
       env.addEventListener('focus', markPeeked, { once: false });
@@ -181,38 +178,26 @@
   }
 
   // ============================================================
-  // NUMBER ANIMATION — with CORRECT cancellation
+  // NUMBER ANIMATION
   // ============================================================
   function easeOutExpo(t) { return t === 1 ? 1 : 1 - Math.pow(2, -10 * t); }
 
-  /**
-   * Animate a number on an element from `from` to `to`.
-   * Each animation gets a token stored in `animationsArray`.
-   * The tick loop checks token.cancelled every frame and bails out if true.
-   * This is bulletproof — no more stale rafId race conditions.
-   */
   function animateNumber(el, from, to, duration = 800, animationsArray = null) {
     if (from === to) { el.textContent = fmt(to); return null; }
-
-    // Each animation has its own token
     const token = { cancelled: false, el: el };
     if (animationsArray) animationsArray.push(token);
-
     const start = performance.now();
     const diff = to - from;
-
     function tick(now) {
-      if (token.cancelled) return; // ← honored EVERY frame
+      if (token.cancelled) return;
       const p = Math.min((now - start) / duration, 1);
       el.textContent = fmt(Math.round(from + diff * easeOutExpo(p)));
       if (p < 1) {
         requestAnimationFrame(tick);
       } else {
-        // Animation done — mark cancelled so it can be cleaned up
         token.cancelled = true;
       }
     }
-
     requestAnimationFrame(tick);
     return token;
   }
@@ -220,9 +205,7 @@
   function cancelAllAnimations(animationsArray) {
     if (!animationsArray) return;
     for (const token of animationsArray) {
-      if (token && typeof token === 'object') {
-        token.cancelled = true;
-      }
+      if (token && typeof token === 'object') token.cancelled = true;
     }
     animationsArray.length = 0;
   }
@@ -263,7 +246,6 @@
   // ============================================================
   function setupUpload({ zone, input, preview, previewName, previewSize, clearBtn, submitBtn, onSelect, onClear }) {
     zone.addEventListener('click', () => input.click());
-
     zone.addEventListener('mousemove', (e) => {
       const rect = zone.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -271,26 +253,16 @@
       zone.style.setProperty('--mx', x + '%');
       zone.style.setProperty('--my', y + '%');
     });
-
     zone.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        input.click();
-      }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
     });
-
     input.addEventListener('change', (e) => {
       const f = e.target.files[0];
       if (f) onSelect(f);
     });
-
     ['dragenter', 'dragover'].forEach(ev => {
-      zone.addEventListener(ev, (e) => {
-        e.preventDefault(); e.stopPropagation();
-        zone.classList.add('drag-over');
-      });
+      zone.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); zone.classList.add('drag-over'); });
     });
-
     zone.addEventListener('dragleave', (e) => {
       e.preventDefault(); e.stopPropagation();
       const r = zone.getBoundingClientRect();
@@ -298,14 +270,12 @@
         zone.classList.remove('drag-over');
       }
     });
-
     zone.addEventListener('drop', (e) => {
       e.preventDefault(); e.stopPropagation();
       zone.classList.remove('drag-over');
       const f = e.dataTransfer.files[0];
       if (f) onSelect(f);
     });
-
     clearBtn.addEventListener('click', (e) => { e.stopPropagation(); onClear(); });
   }
 
@@ -352,16 +322,13 @@
   els.uploadSubmit.addEventListener('click', async () => {
     if (!selectedFile || els.uploadSubmit.disabled) return;
     els.uploadSubmit.disabled = true;
-
     try {
       if (currentJobId) {
         try { await fetch(`/api/job/${currentJobId}`, { method: 'DELETE' }); } catch (_) {}
         currentJobId = null;
       }
-
       const fd = new FormData();
       fd.append('file', selectedFile);
-
       const res = await fetch('/api/upload', { method: 'POST', body: fd });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Upload failed' }));
@@ -370,7 +337,10 @@
       const data = await res.json();
       currentJobId = data.jobId;
       hasSavedCurrentJob = false;
-
+      jobCompleted = false;
+      pollSeq = 0;
+      lastAppliedSeq = 0;
+      pollInFlight = false;
       resetProcessingUI();
       setWorkspaceState('processing');
       startPolling();
@@ -392,32 +362,59 @@
 
   async function pollStatus() {
     if (!currentJobId) return;
+    if (jobCompleted) return;         // hard lock — never poll after complete
+    if (pollInFlight) return;         // skip if previous request still pending
+    pollInFlight = true;
+    const mySeq = ++pollSeq;
+    const jobAtStart = currentJobId;
+
     try {
       const res = await fetch(`/api/status/${currentJobId}`);
+
+      // Guard: another job started while we were fetching — drop this response
+      if (jobAtStart !== currentJobId) return;
+      // Guard: a newer response has already been applied — drop this stale one
+      if (mySeq <= lastAppliedSeq) return;
+      // Guard: job already completed — drop
+      if (jobCompleted) return;
+
       if (!res.ok) {
         if (res.status === 404) { stopPolling(); showError('Job not found. It may have expired.'); }
         return;
       }
+
       const status = await res.json();
 
-      // If we're already showing complete, don't process any more updates
+      // Re-check guards after the JSON parse (also async)
+      if (jobAtStart !== currentJobId) return;
+      if (mySeq <= lastAppliedSeq) return;
+      if (jobCompleted) return;
+
+      lastAppliedSeq = mySeq;
+
       if (status.status === 'complete') {
+        jobCompleted = true;              // lock IMMEDIATELY — no more updates
         stopPolling();
         if (!hasSavedCurrentJob) {
           saveToActivity(status, 'full');
           hasSavedCurrentJob = true;
         }
         showComplete(status);
-        return; // ← don't call updateProcessingUI after complete
+        return;
       }
 
       updateProcessingUI(status);
 
       if (status.status === 'error') {
+        jobCompleted = true;
         stopPolling();
         showError(status.error || 'Processing failed.');
       }
-    } catch (_) {}
+    } catch (_) {
+      // swallow — retry on next tick
+    } finally {
+      pollInFlight = false;
+    }
   }
 
   const STAGE_ORDER = ['parsing', 'cleaning', 'fixing', 'validating', 'dns', 'mx', 'categorizing', 'complete'];
@@ -437,16 +434,17 @@
   }
 
   function updateProcessingUI(status) {
+    if (jobCompleted) return; // extra guard
+
     els.processStep.textContent = status.currentStep || 'Processing...';
     const p = status.progress || 0;
     const t = status.total || 0;
 
-    if (t > lockedTotal) {
-      lockedTotal = t;
-    }
+    if (t > lockedTotal) lockedTotal = t;
     els.processTotal.textContent = `of ${fmt(lockedTotal)}`;
 
-    const safeP = Math.min(p, lockedTotal || p);
+    // Monotonic progress: never go backwards
+    const safeP = Math.max(lastProgress, Math.min(p, lockedTotal || p));
 
     if (safeP !== lastProgress) {
       animateNumber(els.processCount, lastProgress, safeP, 500, inFlightAnimations);
@@ -454,17 +452,30 @@
     }
 
     els.progressFill.style.width = lockedTotal > 0 ? `${Math.min((safeP / lockedTotal) * 100, 100)}%` : '0%';
-
     updatePipelineDots(status.status);
 
     if (status.stats) {
-      updateLive(els.liveGoogle, lastStats.googleWorkspace || 0, status.stats.googleWorkspace || 0);
-      updateLive(els.liveNonGoogle, lastStats.nonGoogle || 0, status.stats.nonGoogle || 0);
-      updateLive(els.liveRemoved, lastStats.removed || 0, status.stats.removed || 0);
-      const rc = (status.stats.needsReview || 0) + (status.stats.roleBased || 0);
-      const lrc = (lastStats.needsReview || 0) + (lastStats.roleBased || 0);
-      updateLive(els.liveReview, lrc, rc);
-      lastStats = { ...status.stats };
+      // Monotonic stats: don't animate downward
+      const gNext = Math.max(lastStats.googleWorkspace || 0, status.stats.googleWorkspace || 0);
+      const ngNext = Math.max(lastStats.nonGoogle || 0, status.stats.nonGoogle || 0);
+      const rmNext = Math.max(lastStats.removed || 0, status.stats.removed || 0);
+      const rNext = Math.max(
+        (lastStats.needsReview || 0) + (lastStats.roleBased || 0),
+        (status.stats.needsReview || 0) + (status.stats.roleBased || 0)
+      );
+      const rCurrent = (lastStats.needsReview || 0) + (lastStats.roleBased || 0);
+
+      updateLive(els.liveGoogle, lastStats.googleWorkspace || 0, gNext);
+      updateLive(els.liveNonGoogle, lastStats.nonGoogle || 0, ngNext);
+      updateLive(els.liveRemoved, lastStats.removed || 0, rmNext);
+      updateLive(els.liveReview, rCurrent, rNext);
+
+      lastStats = {
+        ...status.stats,
+        googleWorkspace: gNext,
+        nonGoogle: ngNext,
+        removed: rmNext,
+      };
     }
 
     if (status.status === 'dns' || status.status === 'mx') {
@@ -490,25 +501,18 @@
   }
 
   function showComplete(status) {
-    // KILL every in-flight animation immediately
     cancelAllAnimations(inFlightAnimations);
-
     const dur = fmtDuration(status.durationMs);
     els.completeMeta.textContent = `Processed ${status.fileName || 'your file'}${dur ? ' in ' + dur : ''}`;
     const stats = status.stats || {};
 
-    // Switch view FIRST, then start fresh animations from 0
     setWorkspaceState('complete');
-
-    // Reset all result numbers to 0 immediately
     $$('#wsComplete .result-card-number').forEach(el => { el.textContent = '0'; });
 
-    // Small delay for view transition, then animate up
     setTimeout(() => {
       $$('#wsComplete .result-card-number').forEach(el => {
         const key = el.dataset.stat;
         const val = stats[key] || 0;
-        // Use a fresh, separate animations array so nothing can cancel these
         animateNumber(el, 0, val, 1200);
       });
     }, 100);
@@ -525,6 +529,10 @@
       currentJobId = null;
     }
     hasSavedCurrentJob = false;
+    jobCompleted = false;
+    pollSeq = 0;
+    lastAppliedSeq = 0;
+    pollInFlight = false;
     selectedFile = null;
     els.fileInput.value = '';
     els.filePreview.classList.remove('visible');
@@ -537,6 +545,7 @@
     els.errorMessage.textContent = msg || 'Unexpected error occurred.';
     stopPolling();
     cancelAllAnimations(inFlightAnimations);
+    jobCompleted = true;
     setWorkspaceState('error');
     setView('workspace');
   }
@@ -547,6 +556,10 @@
       currentJobId = null;
     }
     hasSavedCurrentJob = false;
+    jobCompleted = false;
+    pollSeq = 0;
+    lastAppliedSeq = 0;
+    pollInFlight = false;
     selectedFile = null;
     els.fileInput.value = '';
     els.filePreview.classList.remove('visible');
@@ -585,13 +598,11 @@
   els.sepUploadSubmit.addEventListener('click', async () => {
     if (!sepSelectedFile || els.sepUploadSubmit.disabled) return;
     els.sepUploadSubmit.disabled = true;
-
     try {
       if (sepCurrentJobId) {
         try { await fetch(`/api/job/${sepCurrentJobId}`, { method: 'DELETE' }); } catch (_) {}
         sepCurrentJobId = null;
       }
-
       const checkMx = els.checkGoogleMx.checked;
       const fd = new FormData();
       fd.append('file', sepSelectedFile);
@@ -613,7 +624,10 @@
       const data = await res.json();
       sepCurrentJobId = data.jobId;
       sepHasSavedCurrentJob = false;
-
+      sepJobCompleted = false;
+      sepPollSeq = 0;
+      sepLastAppliedSeq = 0;
+      sepPollInFlight = false;
       resetSepProcessingUI();
       setSepState('processing');
       startSepPolling();
@@ -635,16 +649,34 @@
 
   async function sepPollStatus() {
     if (!sepCurrentJobId) return;
+    if (sepJobCompleted) return;
+    if (sepPollInFlight) return;
+    sepPollInFlight = true;
+    const mySeq = ++sepPollSeq;
+    const jobAtStart = sepCurrentJobId;
+
     try {
       const res = await fetch(`/api/status/${sepCurrentJobId}`);
+
+      if (jobAtStart !== sepCurrentJobId) return;
+      if (mySeq <= sepLastAppliedSeq) return;
+      if (sepJobCompleted) return;
+
       if (!res.ok) {
         if (res.status === 404) { stopSepPolling(); showSepError('Job not found. It may have expired.'); }
         return;
       }
+
       const status = await res.json();
 
-      // If complete, jump straight to complete UI — don't run one more updateProcessingUI
+      if (jobAtStart !== sepCurrentJobId) return;
+      if (mySeq <= sepLastAppliedSeq) return;
+      if (sepJobCompleted) return;
+
+      sepLastAppliedSeq = mySeq;
+
       if (status.status === 'complete') {
+        sepJobCompleted = true;
         stopSepPolling();
         if (!sepHasSavedCurrentJob) {
           saveToActivity(status, 'separator');
@@ -657,10 +689,14 @@
       updateSepProcessingUI(status);
 
       if (status.status === 'error') {
+        sepJobCompleted = true;
         stopSepPolling();
         showSepError(status.error || 'Processing failed.');
       }
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      sepPollInFlight = false;
+    }
   }
 
   function resetSepProcessingUI() {
@@ -679,6 +715,8 @@
   }
 
   function updateSepProcessingUI(status) {
+    if (sepJobCompleted) return;
+
     els.sepProcessStep.textContent = status.currentStep || 'Processing...';
     const p = status.progress || 0;
     const t = status.total || 0;
@@ -686,7 +724,7 @@
     if (t > sepLockedTotal) sepLockedTotal = t;
     els.sepProcessTotal.textContent = `of ${fmt(sepLockedTotal)}`;
 
-    const safeP = Math.min(p, sepLockedTotal || p);
+    const safeP = Math.max(sepLastProgress, Math.min(p, sepLockedTotal || p));
 
     if (safeP !== sepLastProgress) {
       animateNumber(els.sepProcessCount, sepLastProgress, safeP, 500, sepInFlightAnimations);
@@ -695,10 +733,20 @@
     els.sepProgressFill.style.width = sepLockedTotal > 0 ? `${Math.min((safeP / sepLockedTotal) * 100, 100)}%` : '0%';
 
     if (status.stats) {
-      updateSepLive(els.sepLiveBusiness, sepLastStats.business || 0, status.stats.business || 0);
-      updateSepLive(els.sepLiveConsumer, sepLastStats.consumer || 0, status.stats.consumer || 0);
-      updateSepLive(els.sepLiveGoogle, sepLastStats.googleWorkspace || 0, status.stats.googleWorkspace || 0);
-      sepLastStats = { ...status.stats };
+      const bNext = Math.max(sepLastStats.business || 0, status.stats.business || 0);
+      const cNext = Math.max(sepLastStats.consumer || 0, status.stats.consumer || 0);
+      const gNext = Math.max(sepLastStats.googleWorkspace || 0, status.stats.googleWorkspace || 0);
+
+      updateSepLive(els.sepLiveBusiness, sepLastStats.business || 0, bNext);
+      updateSepLive(els.sepLiveConsumer, sepLastStats.consumer || 0, cNext);
+      updateSepLive(els.sepLiveGoogle, sepLastStats.googleWorkspace || 0, gNext);
+
+      sepLastStats = {
+        ...status.stats,
+        business: bNext,
+        consumer: cNext,
+        googleWorkspace: gNext,
+      };
     }
 
     if (status.status === 'mx') {
@@ -713,20 +761,14 @@
   }
 
   function showSepComplete(status) {
-    // KILL every in-flight animation immediately
     cancelAllAnimations(sepInFlightAnimations);
-
     const dur = fmtDuration(status.durationMs);
     els.sepCompleteMeta.textContent = `${status.fileName || 'File'} · ${dur || '—'}`;
     const stats = status.stats || {};
 
-    // Switch to complete view FIRST
     setSepState('complete');
-
-    // Reset final numbers to 0 immediately (no chance of intermediate frames)
     $$('#sepComplete .sep-result-number').forEach(el => { el.textContent = '0'; });
 
-    // Then animate cleanly from 0 to final
     setTimeout(() => {
       $$('#sepComplete .sep-result-number').forEach(el => {
         const key = el.dataset.stat;
@@ -747,6 +789,10 @@
       sepCurrentJobId = null;
     }
     sepHasSavedCurrentJob = false;
+    sepJobCompleted = false;
+    sepPollSeq = 0;
+    sepLastAppliedSeq = 0;
+    sepPollInFlight = false;
     sepSelectedFile = null;
     els.sepFileInput.value = '';
     els.sepFilePreview.classList.remove('visible');
@@ -760,6 +806,7 @@
     els.sepErrorMessage.textContent = msg || 'Unexpected error occurred.';
     stopSepPolling();
     cancelAllAnimations(sepInFlightAnimations);
+    sepJobCompleted = true;
     setSepState('error');
     setView('separator');
   }
@@ -770,6 +817,10 @@
       sepCurrentJobId = null;
     }
     sepHasSavedCurrentJob = false;
+    sepJobCompleted = false;
+    sepPollSeq = 0;
+    sepLastAppliedSeq = 0;
+    sepPollInFlight = false;
     sepSelectedFile = null;
     els.sepFileInput.value = '';
     els.sepFilePreview.classList.remove('visible');
@@ -785,7 +836,6 @@
     try {
       const activity = getActivity();
       if (status.jobId && activity.some(entry => entry.jobId === status.jobId)) return;
-
       const entry = {
         jobId: status.jobId,
         mode: mode || 'full',
@@ -895,12 +945,10 @@
       `;
       return;
     }
-
     els.activityContainer.innerHTML = `<div class="activity-list">${activity.map((entry, i) => {
       const isSep = entry.mode === 'separator';
       const iconClass = isSep ? 'mode-separator' : '';
       const modeLabel = isSep ? 'Separator' : 'Full';
-
       let statsHtml;
       if (isSep) {
         statsHtml = `
@@ -915,11 +963,9 @@
           <span class="activity-item-stat">Removed <strong>${fmt(entry.stats.removed || 0)}</strong></span>
         `;
       }
-
       const iconSvg = isSep
         ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/><line x1="12" y1="3" x2="12" y2="21"/></svg>`
         : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
-
       return `
       <div class="activity-item" style="animation-delay: ${i * 0.04}s;">
         <div class="activity-item-icon ${iconClass}">${iconSvg}</div>
@@ -940,9 +986,6 @@
     return div.innerHTML;
   }
 
-  // ============================================================
-  // INIT
-  // ============================================================
   setWorkspaceState('upload');
   setSepState('upload');
   setView('dashboard');
