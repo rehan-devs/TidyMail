@@ -303,4 +303,4 @@ Do whatever you want with this. Fork it, modify it, use it commercially, keep it
 
 ## Credits
 
-Built as a focused tool for a specific workflow. Pencil loader animation adapted from a public codepen. Everything else written from scratch.
+Built as a focused tool for a specific workflow. Pencil loader animation adapted from a public codepen. Everything else written from scratch.<!-- gitpulse:contribution index="1788143302" timestamp="2026-08-31" -->
